@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { useEffect, useRef, useState } from "react"
 
+
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇺🇸" },
   { code: "hi", label: "Hindi", flag: "🇮🇳" },
@@ -36,6 +37,7 @@ export default function TranscriptionPage() {
 
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState("")
+
 
   // ---- Drag & Drop ----
   const handleDrop = (e: React.DragEvent) => {
@@ -79,7 +81,18 @@ export default function TranscriptionPage() {
 
   const filteredLanguages = LANGUAGES.filter((l) =>
     l.label.toLowerCase().includes(search.toLowerCase())
-  )
+  ) 
+
+  const formatDuration = (seconds: number) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-black via-zinc-900 to-black relative overflow-hidden px-4">
@@ -92,7 +105,7 @@ export default function TranscriptionPage() {
     >
       <p className="inline-flex items-center gap-2 text-sm sm:text-base text-zinc-300 mb-3">
         <span className="text-red-400">📈</span>
-        <span>30,630,992+ hours transcribed</span>
+        <span>30+ hours transcribed</span>
       </p>
 
       <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
