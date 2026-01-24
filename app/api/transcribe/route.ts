@@ -42,10 +42,91 @@ export async function POST(req: Request) {
 
         const data = await response.json()
 
-        const transcript =
-            data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
+        // Check if API returned an error
+        if (!response.ok) {
+            console.error("Gemini API error:", data)
+            
+            // Handle rate limit errors specifically
+            if (data.error?.code === 429 || response.status === 429) {
+                const errorMessage = data.error?.message || ""
+                // Extract retry time if available
+                const retryMatch = errorMessage.match(/Please retry in ([\d.]+)s/)
+                const retryTime = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null
+                
+                return NextResponse.json(
+                    { 
+                        error: retryTime 
+                            ? `Rate limit exceeded. Please wait ${retryTime} seconds and try again.`
+                            : "Rate limit exceeded. Please wait a moment and try again."
+                    },
+                    { status: 429 }
+                )
+            }
+            
+            // Handle other API errors
+            const errorMessage = data.error?.message || "Transcription API error"
+            // Clean up long error messages
+            const cleanMessage = errorMessage.length > 200 
+                ? errorMessage.substring(0, 200) + "..."
+                : errorMessage
+            
+            return NextResponse.json(
+                { error: cleanMessage },
+                { status: response.status }
+            )
+        }
 
-        const cleanedTranscript = transcript.replace(/\[\d+m\d+s\d+ms-\d+m\d+s\d+ms\]/g, '')
+        // Check for errors in response body (Gemini sometimes returns errors with 200 status)
+        if (data.error) {
+            console.error("Gemini API error in response:", data.error)
+            
+            // Handle rate limit errors
+            if (data.error.code === 429) {
+                const errorMessage = data.error.message || ""
+                const retryMatch = errorMessage.match(/Please retry in ([\d.]+)s/)
+                const retryTime = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null
+                
+                return NextResponse.json(
+                    { 
+                        error: retryTime 
+                            ? `Rate limit exceeded. Please wait ${retryTime} seconds and try again.`
+                            : "Rate limit exceeded. Please wait a moment and try again."
+                    },
+                    { status: 429 }
+                )
+            }
+            
+            return NextResponse.json(
+                { error: data.error.message || "Transcription API error" },
+                { status: 500 }
+            )
+        }
+
+        // Log response for debugging (remove in production if needed)
+        console.log("Gemini API response structure:", JSON.stringify(data, null, 2))
+
+        // Extract transcript from response
+        let transcript = ""
+        
+        // Primary path: candidates[0].content.parts[0].text
+        if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            transcript = data.candidates[0].content.parts[0].text
+        }
+        // Fallback: direct text field
+        else if (data?.text) {
+            transcript = data.text
+        }
+
+        if (!transcript || transcript.trim() === "") {
+            console.error("Empty transcript from API. Full response:", JSON.stringify(data, null, 2))
+            return NextResponse.json(
+                { error: "Transcription returned empty result. Please check your audio file and try again." },
+                { status: 500 }
+            )
+        }
+
+        // Clean up timestamp markers if present
+        const cleanedTranscript = transcript.replace(/\[\d+m\d+s\d+ms-\d+m\d+s\d+ms\]/g, '').trim()
 
         return NextResponse.json({
             transcript: cleanedTranscript,

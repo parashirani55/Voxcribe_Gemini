@@ -109,18 +109,29 @@ export default function TranscriptionPage() {
         body: formData,
       })
 
-      const data = await res.json()
+      let data
+      try {
+        data = await res.json()
+      } catch (parseError) {
+        throw new Error("Failed to parse server response. Please try again.")
+      }
 
       if (!res.ok) {
-        throw new Error(data.error)
+        throw new Error(data.error || `Server error: ${res.status}`)
+      }
+
+      // Validate transcript exists
+      if (!data.transcript || data.transcript.trim() === "") {
+        throw new Error("Transcription returned empty result. Please try again.")
       }
 
       const stored = JSON.parse(
         localStorage.getItem("voxscribe_files") || "[]"
       )
 
+      const fileId = crypto.randomUUID()
       stored.unshift({
-        id: crypto.randomUUID(),
+        id: fileId,
         name: file.name,
         size: file.size,
         duration: data.duration,
@@ -132,9 +143,13 @@ export default function TranscriptionPage() {
 
       localStorage.setItem("voxscribe_files", JSON.stringify(stored))
 
-      window.location.href = "/dashboard"
+      // Redirect to the file page to show the transcript immediately
+      window.location.href = `/file/${fileId}`
     } catch (err: any) {
-      alert(err.message)
+      // Show user-friendly error message
+      const errorMessage = err.message || "An error occurred during transcription. Please try again."
+      alert(errorMessage)
+      console.error("Transcription error:", err)
     } finally {
       setIsTranscribing(false)
     }

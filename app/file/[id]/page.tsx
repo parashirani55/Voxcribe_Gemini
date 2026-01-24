@@ -46,16 +46,21 @@ export default function FilePage() {
       setAudioName(current.name)
 
       // Convert plain transcript string → UI sentence format
-      if (current.transcript) {
-        setSentences([
-          {
-            speaker: "Speaker 1",
-            words: current.transcript.split(" ").map((word: string) => ({
-              text: word,
-              time: "",
-            })),
-          },
-        ])
+      if (current.transcript && current.transcript.trim() !== "") {
+        // Split by words and filter out empty strings
+        const words = current.transcript.trim().split(/\s+/).filter((word: string) => word.length > 0)
+        
+        if (words.length > 0) {
+          setSentences([
+            {
+              speaker: "Speaker 1",
+              words: words.map((word: string) => ({
+                text: word,
+                time: "",
+              })),
+            },
+          ])
+        }
       }
     }
 
