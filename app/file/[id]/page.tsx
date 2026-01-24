@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import { motion } from "framer-motion"
 import Header from "@/app/components/header"
 
@@ -14,6 +15,13 @@ type Sentence = {
   words: Word[]
 }
 
+type StoredFile = {
+  id: string
+  name: string
+  transcript?: string
+  createdAt: string
+}
+
 export default function FilePage() {
   // 🔌 Backend will inject these later
   const [audioName, setAudioName] = useState<string>("")
@@ -23,6 +31,39 @@ export default function FilePage() {
   const [currentTime, setCurrentTime] = useState<number>(0)
   const [totalTime, setTotalTime] = useState<number>(0)
   const [volume, setVolume] = useState<number>(0.8)
+
+  const { id } = useParams()
+
+  useEffect(() => {
+    const stored = JSON.parse(
+      localStorage.getItem("voxscribe_files") || "[]"
+    )
+
+    // Find current file
+    const current = stored.find((f: any) => f.id === id)
+
+    if (current) {
+      setAudioName(current.name)
+
+      // Convert plain transcript string → UI sentence format
+      if (current.transcript) {
+        setSentences([
+          {
+            speaker: "Speaker 1",
+            words: current.transcript.split(" ").map((word: string) => ({
+              text: word,
+              time: "",
+            })),
+          },
+        ])
+      }
+    }
+
+    // Populate recent files (left sidebar)
+    setRecentFiles(
+      stored.slice(0, 5).map((f: any) => f.name)
+    )
+  }, [id])
 
   // Progress % for audio bar
   const progressPercent =

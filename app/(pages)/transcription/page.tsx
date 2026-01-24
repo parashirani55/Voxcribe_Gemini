@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { useEffect, useRef, useState } from "react"
 
-
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇺🇸" },
   { code: "hi", label: "Hindi", flag: "🇮🇳" },
@@ -81,45 +80,89 @@ export default function TranscriptionPage() {
 
   const filteredLanguages = LANGUAGES.filter((l) =>
     l.label.toLowerCase().includes(search.toLowerCase())
-  ) 
+  )
 
   const formatDuration = (seconds: number) => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
 
-  if (h > 0) return `${h}h ${m}m ${s}s`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
-}
+    if (h > 0) return `${h}h ${m}m ${s}s`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  }
 
+  const handleTranscribe = async () => {
+    if (!file) {
+      alert("Please upload an audio file")
+      return
+    }
+
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("language", language.code)
+
+    try {
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error)
+      }
+
+      const stored = JSON.parse(
+        localStorage.getItem("voxscribe_files") || "[]"
+      )
+
+      stored.unshift({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        duration: data.duration,
+        language: language.label,
+        createdAt: new Date().toISOString(),
+        status: "completed",
+        transcript: data.transcript,
+      })
+
+      localStorage.setItem("voxscribe_files", JSON.stringify(stored))
+
+      window.location.href = "/dashboard"
+    } catch (err: any) {
+      alert(err.message)
+    }
+  }
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-black via-zinc-900 to-black relative overflow-hidden px-4">
 
-    <motion.div
-      initial={{ opacity: 0, y: -30 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
-      className="relative z-10 text-center mb-10"
-    >
-      <p className="inline-flex items-center gap-2 text-sm sm:text-base text-zinc-300 mb-3">
-        <span className="text-red-400">📈</span>
-        <span>30+ hours transcribed</span>
-      </p>
+      <motion.div
+        initial={{ opacity: 0, y: -30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="relative z-10 text-center mb-10"
+      >
+        <p className="inline-flex items-center gap-2 text-sm sm:text-base text-zinc-300 mb-3">
+          <span className="text-red-400">📈</span>
+          <span>30+ hours transcribed</span>
+        </p>
 
-      <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
-        Unlimited{" "}
-        <span className="bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent">
-          audio
-        </span>{" "}
-        transcription
-      </h1>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
+          Unlimited{" "}
+          <span className="bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent">
+            audio
+          </span>{" "}
+          transcription
+        </h1>
 
-      <p className="mt-4 text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto">
-        Convert audio and video into accurate text in seconds with VoxScribe.
-      </p>
-    </motion.div>
+        <p className="mt-4 text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto">
+          Convert audio and video into accurate text in seconds with VoxScribe.
+        </p>
+      </motion.div>
 
       {/* Liquid blobs */}
       <motion.div
@@ -139,7 +182,7 @@ export default function TranscriptionPage() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6 }}
         className="relative z-10 w-full max-w-xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8"
-      > 
+      >
 
 
         <h1 className="text-2xl sm:text-3xl font-bold text-white text-center mb-6">
@@ -262,6 +305,7 @@ export default function TranscriptionPage() {
 
         {/* Transcribe */}
         <motion.button
+          onClick={handleTranscribe}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           className="mt-6 w-full py-3 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white font-semibold shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition"
