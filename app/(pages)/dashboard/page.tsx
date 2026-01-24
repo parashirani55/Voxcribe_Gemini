@@ -26,6 +26,11 @@ export default function DashboardPage() {
     setFiles(stored)
   }, [])
 
+  const clearRecentFiles = () => {
+    localStorage.removeItem("voxscribe_files")
+    setFiles([])
+  }
+
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60)
     const s = Math.floor(seconds % 60)
@@ -93,12 +98,22 @@ export default function DashboardPage() {
               ⬛⬛⬛ Recent Files
             </div>
 
-            <button
-              onClick={() => router.push("/transcription")}
-              className="flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300 transition"
-            >
-              🎙 Record
-            </button>
+            <div className="flex items-center gap-3">
+              {files.length > 0 && (
+                <button
+                  onClick={clearRecentFiles}
+                  className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-red-400 transition"
+                >
+                  🗑️ Clear All
+                </button>
+              )}
+              <button
+                onClick={() => router.push("/transcription")}
+                className="flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300 transition"
+              >
+                🎙 Record
+              </button>
+            </div>
           </div>
 
           {/* Content */}

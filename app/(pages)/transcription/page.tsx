@@ -36,7 +36,7 @@ export default function TranscriptionPage() {
 
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState("")
-
+  const [isTranscribing, setIsTranscribing] = useState(false)
 
   // ---- Drag & Drop ----
   const handleDrop = (e: React.DragEvent) => {
@@ -98,6 +98,7 @@ export default function TranscriptionPage() {
       return
     }
 
+    setIsTranscribing(true)
     const formData = new FormData()
     formData.append("file", file)
     formData.append("language", language.code)
@@ -134,6 +135,8 @@ export default function TranscriptionPage() {
       window.location.href = "/dashboard"
     } catch (err: any) {
       alert(err.message)
+    } finally {
+      setIsTranscribing(false)
     }
   }
 
@@ -308,9 +311,20 @@ export default function TranscriptionPage() {
           onClick={handleTranscribe}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
-          className="mt-6 w-full py-3 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white font-semibold shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition"
+          disabled={isTranscribing}
+          className="mt-6 w-full py-3 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white font-semibold shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          TRANSCRIBE
+          {isTranscribing ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+              </svg>
+              TRANSCRIBING...
+            </span>
+          ) : (
+            "TRANSCRIBE"
+          )}
         </motion.button>
       </motion.div>
     </div>
