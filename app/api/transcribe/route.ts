@@ -126,7 +126,14 @@ export async function POST(req: Request) {
         }
 
         // Clean up timestamp markers if present
-        const cleanedTranscript = transcript.replace(/\[\d+m\d+s\d+ms-\d+m\d+s\d+ms\]/g, '').trim()
+        let cleanedTranscript = transcript
+            // Remove [XmXsXms-XmXsXms] style (e.g. [0m5s100ms-0m10s200ms])
+            .replace(/\[\d+m\d+s\d+ms-\d+m\d+s\d+ms\]/g, '')
+            // Remove M:SS / MM:SS at start (e.g. 0:00, 00:06)
+            .replace(/^\d{1,2}:\d{2}/, '')
+            // Remove M:SS / MM:SS after sentence-ending punctuation (e.g. ?00:06, .00:15, )01:05)
+            .replace(/(?<=[.?!)])\s*\d{1,2}:\d{2}/g, ' ')
+        cleanedTranscript = cleanedTranscript.replace(/\s+/g, ' ').trim()
 
         return NextResponse.json({
             transcript: cleanedTranscript,
