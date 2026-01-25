@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import Header from "@/app/components/header"
 import { getAudioFile } from "@/app/utils/audioStorage"
@@ -38,7 +38,7 @@ export default function FilePage() {
   // 🔌 Backend will inject these later
   const [audioName, setAudioName] = useState<string>("")
   const [sentences, setSentences] = useState<Sentence[]>([])
-  const [recentFiles, setRecentFiles] = useState<string[]>([])
+  const [recentFiles, setRecentFiles] = useState<{ id: string; name: string }[]>([])
 
   const [currentTime, setCurrentTime] = useState<number>(0)
   const [totalTime, setTotalTime] = useState<number>(0)
@@ -49,6 +49,7 @@ export default function FilePage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const activeWordRef = useRef<HTMLSpanElement | null>(null)
   const { id } = useParams()
+  const router = useRouter()
 
   // Word-level timings: distribute duration by character length for better sync with speech
   const sentencesWithTiming = useMemo((): SentenceWithTiming[] => {
@@ -140,7 +141,7 @@ export default function FilePage() {
 
       // Populate recent files (left sidebar)
       setRecentFiles(
-        stored.slice(0, 5).map((f: any) => f.name)
+        stored.slice(0, 5).map((f: any) => ({ id: f.id, name: f.name }))
       )
     }
 
@@ -251,10 +252,11 @@ export default function FilePage() {
               <div className="space-y-2 text-sm">
                 {recentFiles.map((file, i) => (
                   <button
-                    key={i}
+                    key={file.id || `recent-${i}`}
+                    onClick={() => file.id && router.push(`/file/${file.id}`)}
                     className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300"
                   >
-                    {file}
+                    {file.name}
                   </button>
                 ))}
               </div>
