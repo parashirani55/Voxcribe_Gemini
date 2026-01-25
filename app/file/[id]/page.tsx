@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { motion } from "framer-motion"
 import Header from "@/app/components/header"
@@ -11,9 +11,20 @@ type Word = {
   time: string
 }
 
+type WordWithTiming = {
+  text: string
+  start: number
+  end: number
+}
+
 type Sentence = {
   speaker: string
   words: Word[]
+}
+
+type SentenceWithTiming = {
+  speaker: string
+  words: WordWithTiming[]
 }
 
 type StoredFile = {
@@ -36,7 +47,54 @@ export default function FilePage() {
   const [audioUrl, setAudioUrl] = useState<string>("")
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const activeWordRef = useRef<HTMLSpanElement | null>(null)
   const { id } = useParams()
+
+  // Word-level timings: distribute duration by character length for better sync with speech
+  const sentencesWithTiming = useMemo((): SentenceWithTiming[] => {
+    if (sentences.length === 0 || totalTime <= 0) return []
+    const allWords = sentences.flatMap((s) => s.words)
+    if (allWords.length === 0) return []
+    const totalChars = allWords.reduce((acc, w) => acc + Math.max(1, w.text.length), 0)
+    let t = 0
+    let wi = 0
+    return sentences.map((s) => ({
+      speaker: s.speaker,
+      words: s.words.map((w) => {
+        const duration = (Math.max(1, w.text.length) / totalChars) * totalTime
+        const start = t
+        t += duration
+        wi += 1
+        const end = wi === allWords.length ? totalTime : t
+        return { text: w.text, start, end }
+      }),
+    }))
+  }, [sentences, totalTime])
+
+  // Which word is currently being spoken (for highlight)
+  const activeWord = useMemo((): { sentenceIndex: number; wordIndex: number } | null => {
+    if (sentencesWithTiming.length === 0) return null
+    for (let si = 0; si < sentencesWithTiming.length; si++) {
+      const sent = sentencesWithTiming[si]
+      for (let wi = 0; wi < sent.words.length; wi++) {
+        const w = sent.words[wi]
+        if (currentTime >= w.start && currentTime < w.end) return { sentenceIndex: si, wordIndex: wi }
+      }
+    }
+    // At or past end: keep last word highlighted
+    const last = sentencesWithTiming[sentencesWithTiming.length - 1]
+    if (last.words.length > 0 && currentTime >= last.words[last.words.length - 1].start) {
+      return { sentenceIndex: sentencesWithTiming.length - 1, wordIndex: last.words.length - 1 }
+    }
+    return null
+  }, [sentencesWithTiming, currentTime])
+
+  // Auto-scroll transcript so the active word stays in view
+  useEffect(() => {
+    if (activeWord) {
+      activeWordRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    }
+  }, [activeWord])
 
   useEffect(() => {
     const loadFile = async () => {
@@ -218,8 +276,8 @@ export default function FilePage() {
             </p>
           </div>
 
-          {/* Transcript display (READ-ONLY UI) */}
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl p-6 min-h-[260px]">
+          {/* Transcript display with audio-synced highlighting */}
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl p-6 min-h-[260px] max-h-[50vh] overflow-y-auto">
             {sentences.length === 0 ? (
               <div className="text-center text-zinc-400">
                 <p className="mb-2">📝 No transcript yet</p>
@@ -228,32 +286,51 @@ export default function FilePage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {sentences.map((sentence, i) => (
-                  <div
-                    key={i}
-                    className="rounded-lg p-3 hover:bg-white/5 transition"
-                  >
-                    {/* Speaker */}
-                    <div className="text-xs text-red-400 font-semibold mb-1">
-                      {sentence.speaker}
-                    </div>
-
-                    {/* Words */}
-                    <div className="text-white leading-relaxed break-words overflow-wrap-anywhere">
-                      {sentence.words.map((word, j) => (
-                        <span
-                          key={j}
-                          className="mr-1 hover:text-red-400 transition inline-block"
-                          title={word.time}
-                        >
-                          {word.text}
-                        </span>
-                      ))}
-                    </div>
+              (() => {
+                const useTiming = totalTime > 0 && sentencesWithTiming.length > 0
+                const list = useTiming ? sentencesWithTiming : sentences
+                return (
+                  <div className="space-y-4">
+                    {list.map((sentence, si) => (
+                      <div
+                        key={si}
+                        className="rounded-lg p-3 hover:bg-white/5 transition"
+                      >
+                        <div className="text-xs text-red-400 font-semibold mb-1">
+                          {sentence.speaker}
+                        </div>
+                        <div className="text-white leading-relaxed break-words overflow-wrap-anywhere">
+                          {useTiming
+                            ? (sentence as SentenceWithTiming).words.map((word, wi) => {
+                                const isActive = activeWord?.sentenceIndex === si && activeWord?.wordIndex === wi
+                                return (
+                                  <span
+                                    key={wi}
+                                    ref={isActive ? activeWordRef : undefined}
+                                    onClick={() => {
+                                      const a = audioRef.current
+                                      if (a) a.currentTime = word.start
+                                    }}
+                                    className={`mr-1 inline-block transition-all cursor-pointer rounded px-0.5 -mx-0.5 ${
+                                      isActive ? "bg-red-500/50 text-white" : "hover:text-red-400 hover:bg-white/10"
+                                    }`}
+                                    title={`${word.start.toFixed(1)}s – ${word.end.toFixed(1)}s`}
+                                  >
+                                    {word.text}
+                                  </span>
+                                )
+                              })
+                            : (sentence as Sentence).words.map((word, wi) => (
+                                <span key={wi} className="mr-1 hover:text-red-400 transition inline-block" title={word.time || undefined}>
+                                  {word.text}
+                                </span>
+                              ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )
+              })()
             )}
           </div>
         </div>
