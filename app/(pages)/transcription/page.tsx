@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { useEffect, useRef, useState } from "react"
+import { storeAudioFile } from "@/app/utils/audioStorage"
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇺🇸" },
@@ -130,6 +131,10 @@ export default function TranscriptionPage() {
       )
 
       const fileId = crypto.randomUUID()
+      
+      // Store audio file in IndexedDB (not localStorage to avoid quota issues)
+      await storeAudioFile(fileId, file)
+
       stored.unshift({
         id: fileId,
         name: file.name,
@@ -139,6 +144,7 @@ export default function TranscriptionPage() {
         createdAt: new Date().toISOString(),
         status: "completed",
         transcript: data.transcript,
+        // Don't store audioData in localStorage - it's in IndexedDB
       })
 
       localStorage.setItem("voxscribe_files", JSON.stringify(stored))

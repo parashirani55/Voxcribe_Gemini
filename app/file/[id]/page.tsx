@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams } from "next/navigation"
 import { motion } from "framer-motion"
 import Header from "@/app/components/header"
+import { getAudioFile } from "@/app/utils/audioStorage"
 
 type Word = {
   text: string
@@ -31,44 +32,126 @@ export default function FilePage() {
   const [currentTime, setCurrentTime] = useState<number>(0)
   const [totalTime, setTotalTime] = useState<number>(0)
   const [volume, setVolume] = useState<number>(0.8)
+  const [isPlaying, setIsPlaying] = useState<boolean>(false)
+  const [audioUrl, setAudioUrl] = useState<string>("")
 
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const { id } = useParams()
 
   useEffect(() => {
-    const stored = JSON.parse(
-      localStorage.getItem("voxscribe_files") || "[]"
-    )
+    const loadFile = async () => {
+      const stored = JSON.parse(
+        localStorage.getItem("voxscribe_files") || "[]"
+      )
 
-    // Find current file
-    const current = stored.find((f: any) => f.id === id)
+      // Find current file
+      const current = stored.find((f: any) => f.id === id)
 
-    if (current) {
-      setAudioName(current.name)
+      if (current) {
+        setAudioName(current.name)
 
-      // Convert plain transcript string → UI sentence format
-      if (current.transcript && current.transcript.trim() !== "") {
-        // Split by words and filter out empty strings
-        const words = current.transcript.trim().split(/\s+/).filter((word: string) => word.length > 0)
-        
-        if (words.length > 0) {
-          setSentences([
-            {
-              speaker: "Speaker 1",
-              words: words.map((word: string) => ({
-                text: word,
-                time: "",
-              })),
-            },
-          ])
+        // Load audio file from IndexedDB
+        try {
+          const audioFile = await getAudioFile(current.id)
+          if (audioFile) {
+            const blobUrl = URL.createObjectURL(audioFile)
+            setAudioUrl(blobUrl)
+          }
+        } catch (error) {
+          console.error("Failed to load audio file:", error)
+        }
+
+        // Convert plain transcript string → UI sentence format
+        if (current.transcript && current.transcript.trim() !== "") {
+          // Split by words and filter out empty strings
+          const words = current.transcript.trim().split(/\s+/).filter((word: string) => word.length > 0)
+          
+          if (words.length > 0) {
+            setSentences([
+              {
+                speaker: "Speaker 1",
+                words: words.map((word: string) => ({
+                  text: word,
+                  time: "",
+                })),
+              },
+            ])
+          }
         }
       }
+
+      // Populate recent files (left sidebar)
+      setRecentFiles(
+        stored.slice(0, 5).map((f: any) => f.name)
+      )
     }
 
-    // Populate recent files (left sidebar)
-    setRecentFiles(
-      stored.slice(0, 5).map((f: any) => f.name)
-    )
+    loadFile()
   }, [id])
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl)
+      }
+    }
+  }, [audioUrl])
+
+  // Audio event handlers
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const updateTime = () => setCurrentTime(audio.currentTime)
+    const updateDuration = () => setTotalTime(audio.duration)
+    const handlePlay = () => setIsPlaying(true)
+    const handlePause = () => setIsPlaying(false)
+    const handleEnded = () => setIsPlaying(false)
+
+    audio.addEventListener("timeupdate", updateTime)
+    audio.addEventListener("loadedmetadata", updateDuration)
+    audio.addEventListener("play", handlePlay)
+    audio.addEventListener("pause", handlePause)
+    audio.addEventListener("ended", handleEnded)
+
+    return () => {
+      audio.removeEventListener("timeupdate", updateTime)
+      audio.removeEventListener("loadedmetadata", updateDuration)
+      audio.removeEventListener("play", handlePlay)
+      audio.removeEventListener("pause", handlePause)
+      audio.removeEventListener("ended", handleEnded)
+    }
+  }, [audioUrl])
+
+  // Update volume when it changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume
+    }
+  }, [volume])
+
+  // Play/Pause handler
+  const togglePlayPause = () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (isPlaying) {
+      audio.pause()
+    } else {
+      audio.play()
+    }
+  }
+
+  // Format time helper
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
+    
+    if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+    return `${m}:${s.toString().padStart(2, "0")}`
+  }
 
   // Progress % for audio bar
   const progressPercent =
@@ -200,42 +283,65 @@ export default function FilePage() {
         </div>
       </div>
 
+      {/* Hidden audio element */}
+      {audioUrl && (
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          preload="metadata"
+        />
+      )}
+
       {/* Bottom audio bar (centered + volume) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-3xl bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-3 shadow-2xl flex items-center gap-4">
+      {audioUrl && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-3xl bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-3 shadow-2xl flex items-center gap-4">
 
-        {/* Play / Pause */}
-        <button className="text-white text-xl hover:scale-105 transition">
-          ▶
-        </button>
+          {/* Play / Pause */}
+          <button
+            onClick={togglePlayPause}
+            className="text-white text-xl hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!audioUrl}
+          >
+            {isPlaying ? "⏸" : "▶"}
+          </button>
 
-        {/* Progress bar */}
-        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-red-600 to-pink-600 rounded-full transition-all"
-            style={{ width: `${progressPercent}%` }}
-          />
+          {/* Progress bar */}
+          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer"
+            onClick={(e) => {
+              const audio = audioRef.current
+              if (!audio) return
+              const rect = e.currentTarget.getBoundingClientRect()
+              const percent = (e.clientX - rect.left) / rect.width
+              audio.currentTime = percent * audio.duration
+            }}
+          >
+            <div
+              className="h-full bg-gradient-to-r from-red-600 to-pink-600 rounded-full transition-all"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          {/* Time */}
+          <div className="text-xs text-zinc-400 whitespace-nowrap">
+            {formatTime(currentTime)} / {formatTime(totalTime)}
+          </div>
+
+          {/* Volume */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">🔊</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="w-24 accent-red-300 cursor-pointer"
+            />
+          </div>
+
         </div>
-
-        {/* Time */}
-        <div className="text-xs text-zinc-400 whitespace-nowrap">
-          {currentTime || 0} / {totalTime || 0}
-        </div>
-
-        {/* Volume */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-400">🔊</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            className="w-24 accent-red-300 cursor-pointer"
-          />
-        </div>
-
-      </div>
+      )}
     </div>
   )
 }
