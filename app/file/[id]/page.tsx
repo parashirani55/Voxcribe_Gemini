@@ -124,7 +124,7 @@ export default function FilePage() {
         if (current.transcript && current.transcript.trim() !== "") {
           // Split by words and filter out empty strings
           const words = current.transcript.trim().split(/\s+/).filter((word: string) => word.length > 0)
-          
+
           if (words.length > 0) {
             setSentences([
               {
@@ -207,7 +207,7 @@ export default function FilePage() {
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)
     const s = Math.floor(seconds % 60)
-    
+
     if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
     return `${m}:${s.toString().padStart(2, "0")}`
   }
@@ -284,16 +284,25 @@ export default function FilePage() {
   }
 
   const downloadPdf = async () => {
+    const text = getTranscriptText()
+
+    if (!text || text.trim().length === 0) {
+      alert("Transcript is empty. Generate transcription first.")
+      return
+    }
+
     try {
       const res = await fetch("/api/export/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: getTranscriptText(),
+          text,
           filename: getBaseFilename(),
         }),
       })
+
       if (!res.ok) throw new Error("PDF export failed")
+
       const blob = await res.blob()
       downloadBlob(blob, `${getBaseFilename()}.pdf`)
     } catch (e) {
@@ -407,29 +416,28 @@ export default function FilePage() {
                         <div className="text-white leading-relaxed break-words overflow-wrap-anywhere">
                           {useTiming
                             ? (sentence as SentenceWithTiming).words.map((word, wi) => {
-                                const isActive = activeWord?.sentenceIndex === si && activeWord?.wordIndex === wi
-                                return (
-                                  <span
-                                    key={wi}
-                                    ref={isActive ? activeWordRef : undefined}
-                                    onClick={() => {
-                                      const a = audioRef.current
-                                      if (a) a.currentTime = word.start
-                                    }}
-                                    className={`mr-1 inline-block transition-all cursor-pointer rounded px-0.5 -mx-0.5 ${
-                                      isActive ? "bg-red-500/50 text-white" : "hover:text-red-400 hover:bg-white/10"
+                              const isActive = activeWord?.sentenceIndex === si && activeWord?.wordIndex === wi
+                              return (
+                                <span
+                                  key={wi}
+                                  ref={isActive ? activeWordRef : undefined}
+                                  onClick={() => {
+                                    const a = audioRef.current
+                                    if (a) a.currentTime = word.start
+                                  }}
+                                  className={`mr-1 inline-block transition-all cursor-pointer rounded px-0.5 -mx-0.5 ${isActive ? "bg-red-500/50 text-white" : "hover:text-red-400 hover:bg-white/10"
                                     }`}
-                                    title={`${word.start.toFixed(1)}s – ${word.end.toFixed(1)}s`}
-                                  >
-                                    {word.text}
-                                  </span>
-                                )
-                              })
-                            : (sentence as Sentence).words.map((word, wi) => (
-                                <span key={wi} className="mr-1 hover:text-red-400 transition inline-block" title={word.time || undefined}>
+                                  title={`${word.start.toFixed(1)}s – ${word.end.toFixed(1)}s`}
+                                >
                                   {word.text}
                                 </span>
-                              ))}
+                              )
+                            })
+                            : (sentence as Sentence).words.map((word, wi) => (
+                              <span key={wi} className="mr-1 hover:text-red-400 transition inline-block" title={word.time || undefined}>
+                                {word.text}
+                              </span>
+                            ))}
                         </div>
                       </div>
                     ))}
