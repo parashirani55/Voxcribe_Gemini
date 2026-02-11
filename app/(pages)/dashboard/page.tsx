@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Header from "../../components/header"
+import { supabase } from "@/lib/supabaseClient"
 
 type VoxFile = {
   id: string
@@ -16,8 +17,24 @@ type VoxFile = {
 }
 
 export default function DashboardPage() {
-  const [files, setFiles] = useState<VoxFile[]>([])
   const router = useRouter()
+
+  const [files, setFiles] = useState<VoxFile[]>([])
+  const [username, setUsername] = useState<string | null>(null)
+
+  useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        setUsername(user.user_metadata?.username ?? null)
+      }
+    }
+
+    getUser()
+  }, [])
 
   useEffect(() => {
     const stored = JSON.parse(
@@ -25,6 +42,11 @@ export default function DashboardPage() {
     )
     setFiles(stored)
   }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.replace("/auth/login")
+  }
 
   const clearRecentFiles = () => {
     localStorage.removeItem("voxscribe_files")
@@ -40,51 +62,26 @@ export default function DashboardPage() {
   return (
     <div className="relative min-h-screen w-full bg-gradient-to-br from-black via-zinc-900 to-black overflow-hidden">
 
-      {/* Liquid blobs (same as login/signup) */}
+      {/* Background blobs */}
       <motion.div
-        className="absolute -top-32 -left-32 w-96 h-96 bg-red-600/30 rounded-full blur-3xl"
+        className="absolute -top-32 -left-32 w-96 h-96 bg-red-600/30 rounded-full blur-3xl will-change-transform!"
         animate={{ x: [0, 60, -40, 0], y: [0, 40, -60, 0] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -bottom-32 -right-32 w-96 h-96 bg-pink-600/20 rounded-full blur-3xl"
+        className="absolute -bottom-32 -right-32 w-96 h-96 bg-pink-600/20 rounded-full blur-3xl will-change-transform!"
         animate={{ x: [0, -50, 30, 0], y: [0, -40, 50, 0] }}
         transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* /* Header */}
-      <Header/>
+      {/* Header */}
+      <Header
+        userName={username}
+        onLogout={handleLogout}
+      />
 
       {/* Main layout */}
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-10 flex gap-8">
-
-        {/* Sidebar */}
-        <div className="w-64 shrink-0 hidden md:block">
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow p-4 mb-4">
-            <p className="text-sm text-zinc-400 mb-2">
-              {files.length} daily transcriptions used
-            </p>
-
-            <button className="w-full py-2 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white text-sm font-medium shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition">
-              Go Unlimited
-            </button>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow p-4">
-            <p className="text-xs text-zinc-400 mb-2">Shortcuts</p>
-
-            <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 text-sm font-medium text-white">
-              📁 Recent Files
-            </button>
-
-            <div className="mt-4">
-              <p className="text-xs text-zinc-400 mb-2">Folders</p>
-              <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-zinc-300">
-                ➕ New Folder
-              </button>
-            </div>
-          </div>
-        </div>
 
         {/* Main card */}
         <motion.div
@@ -95,24 +92,18 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2 text-xl font-semibold text-white">
-              ⬛⬛⬛ Recent Files
+              All Recent Files
             </div>
 
             <div className="flex items-center gap-3">
               {files.length > 0 && (
                 <button
                   onClick={clearRecentFiles}
-                  className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-red-400 transition"
+                  className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-red-400 transition cursor-pointer"
                 >
                   🗑️ Clear All
                 </button>
               )}
-              <button
-                onClick={() => router.push("/transcription")}
-                className="flex items-center gap-2 text-sm font-medium text-red-400 hover:text-red-300 transition"
-              >
-                🎙 Record
-              </button>
             </div>
           </div>
 
@@ -162,7 +153,7 @@ export default function DashboardPage() {
                   <button
                     key={file.id}
                     onClick={() => router.push(`/file/${file.id}`)}
-                    className="w-full text-left px-4 py-4 hover:bg-white/5 transition flex justify-between items-center"
+                    className="w-full text-left px-4 py-4 hover:bg-white/5 transition flex justify-between items-center cursor-pointer"
                   >
                     <div>
                       <p className="font-medium text-white">

@@ -1,8 +1,10 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react"
 import { storeAudioFile } from "@/app/utils/audioStorage"
+import { FiChevronDown, FiClock } from "react-icons/fi"
+import { useRouter } from "next/navigation"
 
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇺🇸" },
@@ -26,6 +28,8 @@ const LANGUAGES = [
 ]
 
 export default function TranscriptionPage() {
+  const router = useRouter()
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement | null>(null)
 
@@ -37,10 +41,15 @@ export default function TranscriptionPage() {
 
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState("")
+
   const [isTranscribing, setIsTranscribing] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
+
+  const [progress, setProgress] = useState(0)
+  const progressRef = useRef<any>(null)
 
   // ---- Drag & Drop ----
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     const droppedFile = e.dataTransfer.files?.[0]
@@ -51,7 +60,7 @@ export default function TranscriptionPage() {
     fileInputRef.current?.click()
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
     if (selected) setFile(selected)
   }
@@ -66,6 +75,30 @@ export default function TranscriptionPage() {
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [])
+
+  // ---- Dynamic Progress Bar (simulated) ----
+  useEffect(() => {
+    if (isTranscribing) {
+      setProgress(0)
+
+      progressRef.current = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) return prev
+          const increment = (100 - prev) * 0.05
+          return prev + increment
+        })
+      }, 500)
+    } else {
+      if (progressRef.current) {
+        clearInterval(progressRef.current)
+        progressRef.current = null
+      }
+    }
+
+    return () => {
+      if (progressRef.current) clearInterval(progressRef.current)
+    }
+  }, [isTranscribing])
 
   // ---- Language logic ----
   const selectLanguage = (lang: (typeof LANGUAGES)[0]) => {
@@ -83,26 +116,18 @@ export default function TranscriptionPage() {
     l.label.toLowerCase().includes(search.toLowerCase())
   )
 
-  const formatDuration = (seconds: number) => {
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = Math.floor(seconds % 60)
-
-    if (h > 0) return `${h}h ${m}m ${s}s`
-    if (m > 0) return `${m}m ${s}s`
-    return `${s}s`
-  }
-
   const handleTranscribe = async () => {
     if (!file) {
       alert("Please upload an audio file")
       return
     }
 
+    setShowProgress(true)
     setIsTranscribing(true)
+
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("language", language.label)
+    formData.append("language", language.code)
 
     try {
       const res = await fetch("/api/transcribe", {
@@ -110,7 +135,7 @@ export default function TranscriptionPage() {
         body: formData,
       })
 
-      let data
+      let data: any
       try {
         data = await res.json()
       } catch (parseError) {
@@ -121,60 +146,60 @@ export default function TranscriptionPage() {
         throw new Error(data.error || `Server error: ${res.status}`)
       }
 
-      // Validate transcript exists
-      if (!data.transcript || data.transcript.trim() === "") {
+      const transcriptText = data.text || data.transcript || ""
+
+      if (!transcriptText || transcriptText.trim() === "") {
         throw new Error("Transcription returned empty result. Please try again.")
       }
 
-      const stored = JSON.parse(
-        localStorage.getItem("voxscribe_files") || "[]"
-      )
+      // Complete the progress bar
+      setProgress(100)
 
+      const stored = JSON.parse(localStorage.getItem("voxscribe_files") || "[]")
       const fileId = crypto.randomUUID()
-      
-      // Store audio file in IndexedDB (not localStorage to avoid quota issues)
+
       await storeAudioFile(fileId, file)
 
       stored.unshift({
         id: fileId,
         name: file.name,
         size: file.size,
-        duration: data.duration,
+        duration: data.duration || 0,
         language: language.label,
         createdAt: new Date().toISOString(),
         status: "completed",
-        transcript: data.transcript,
-        // Don't store audioData in localStorage - it's in IndexedDB
+        transcript: transcriptText,
       })
 
       localStorage.setItem("voxscribe_files", JSON.stringify(stored))
 
-      // Redirect to the file page to show the transcript immediately
-      window.location.href = `/file/${fileId}`
+      // Redirect after showing 100%
+      setTimeout(() => {
+        setIsTranscribing(false)
+        setShowProgress(false)
+        router.push(`/file/${fileId}`)
+      }, 1500)
     } catch (err: any) {
-      // Show user-friendly error message
-      const errorMessage = err.message || "An error occurred during transcription. Please try again."
+      const errorMessage =
+        err.message || "An error occurred during transcription. Please try again."
+
       alert(errorMessage)
       console.error("Transcription error:", err)
-    } finally {
+
+      setProgress(0)
       setIsTranscribing(false)
+      setShowProgress(false)
     }
   }
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-black via-zinc-900 to-black relative overflow-hidden px-4">
-
       <motion.div
         initial={{ opacity: 0, y: -30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="relative z-10 text-center mb-10"
       >
-        <p className="inline-flex items-center gap-2 text-sm sm:text-base text-zinc-300 mb-3">
-          <span className="text-red-400">📈</span>
-          <span>30+ hours transcribed</span>
-        </p>
-
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
           Unlimited{" "}
           <span className="bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent">
@@ -184,18 +209,18 @@ export default function TranscriptionPage() {
         </h1>
 
         <p className="mt-4 text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto">
-          Convert audio and video into accurate text in seconds with VoxScribe.
+          Convert audio into accurate text in seconds with VoxScribe.
         </p>
       </motion.div>
 
       {/* Liquid blobs */}
       <motion.div
-        className="absolute -top-32 -left-32 w-96 h-96 bg-red-600/30 rounded-full blur-3xl"
+        className="absolute -top-32 -left-32 w-96 h-96 bg-red-600/30 rounded-full blur-3xl will-change-transform"
         animate={{ x: [0, 60, -40, 0], y: [0, 40, -60, 0] }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -bottom-32 -right-32 w-96 h-96 bg-pink-600/20 rounded-full blur-3xl"
+        className="absolute -bottom-32 -right-32 w-96 h-96 bg-pink-600/20 rounded-full blur-3xl will-change-transform"
         animate={{ x: [0, -50, 30, 0], y: [0, -40, 50, 0] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -207,8 +232,6 @@ export default function TranscriptionPage() {
         transition={{ duration: 0.6 }}
         className="relative z-10 w-full max-w-xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8"
       >
-
-
         <h1 className="text-2xl sm:text-3xl font-bold text-white text-center mb-6">
           Transcribe Files
         </h1>
@@ -223,8 +246,8 @@ export default function TranscriptionPage() {
           onDrop={handleDrop}
           onClick={handleBrowse}
           className={`border-2 border-dashed rounded-xl p-6 sm:p-8 text-center cursor-pointer transition
-            ${isDragging ? "border-red-400 bg-red-500/10" : "border-red-500/50 bg-black/30 hover:bg-black/40"}
-          `}
+              ${isDragging ? "border-red-400 bg-red-500/10" : "border-red-500/50 bg-black/30 hover:bg-black/40"}
+            `}
         >
           <input
             ref={fileInputRef}
@@ -244,7 +267,7 @@ export default function TranscriptionPage() {
                 MP3, MP4, M4A, MOV, AAC, WAV, OGG, OPUS, MPEG, WMA, WMV
               </p>
               <p className="text-sm text-zinc-500 my-2">— OR —</p>
-              <button className="px-5 py-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 transition text-sm font-medium">
+              <button className="px-5 py-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 transition text-sm font-medium cursor-pointer">
                 Browse Files
               </button>
             </>
@@ -260,13 +283,19 @@ export default function TranscriptionPage() {
           <button
             type="button"
             onClick={() => setIsOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-black/40 border border-white/10 text-white hover:bg-black/50 transition"
+            className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-black/40 border border-white/10 text-white hover:bg-black/50 transition cursor-pointer"
           >
             <span className="flex items-center gap-2">
               <span>{language.flag}</span>
               <span>{language.label}</span>
             </span>
-            <span className="text-zinc-400">▾</span>
+            <motion.span
+              animate={{ rotate: isOpen ? 180 : 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="text-zinc-400 flex items-center"
+            >
+              <FiChevronDown size={18} />
+            </motion.span>
           </button>
 
           <AnimatePresence>
@@ -275,9 +304,10 @@ export default function TranscriptionPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
-                className="absolute z-50 mt-2 w-full bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl p-2"
+                className="absolute z-[999] bottom-full mb-2 w-full
+                  bg-zinc-900/95 backdrop-blur-xl
+                  border border-white/10 rounded-xl shadow-xl p-2"
               >
-                {/* Search */}
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -285,10 +315,9 @@ export default function TranscriptionPage() {
                   className="w-full mb-2 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-red-500/60"
                 />
 
-                {/* Recent */}
                 {recentLanguages.length > 0 && (
                   <>
-                    <p className="text-xs text-zinc-400 mb-1">Recent</p>
+                    <p className="text-xs text-zinc-400 mb-1 px-2">Recent</p>
                     {recentLanguages.map((lang) => (
                       <button
                         key={lang.code}
@@ -303,7 +332,6 @@ export default function TranscriptionPage() {
                   </>
                 )}
 
-                {/* All */}
                 <div className="max-h-56 overflow-y-auto pr-1">
                   {filteredLanguages.map((lang) => (
                     <button
@@ -327,19 +355,31 @@ export default function TranscriptionPage() {
           </AnimatePresence>
         </div>
 
-        {/* Transcribe */}
+        {/* Transcribe button */}
         <motion.button
           onClick={handleTranscribe}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           disabled={isTranscribing}
-          className="mt-6 w-full py-3 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white font-semibold shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-6 w-full py-3 rounded-lg bg-gradient-to-r from-red-600 to-pink-600 text-white font-semibold shadow-lg shadow-red-600/20 hover:shadow-red-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           {isTranscribing ? (
             <span className="flex items-center justify-center gap-2">
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
               TRANSCRIBING...
             </span>
@@ -347,6 +387,62 @@ export default function TranscriptionPage() {
             "TRANSCRIBE"
           )}
         </motion.button>
+
+        {/* Progress bar */}
+        {showProgress && (
+          <div className="mt-4">
+            <div className="flex justify-between items-center text-xs text-zinc-400 mb-2">
+              <div className="flex items-center gap-2">
+                <FiClock className="w-3.5 h-3.5" />
+                <span>Processing audio</span>
+              </div>
+              <span className="font-mono">{Math.floor(progress)}%</span>
+            </div>
+
+            <div className="relative w-full h-2.5 rounded-full bg-white/5 overflow-hidden border border-white/10">
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                animate={{ x: ["-100%", "200%"] }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "linear",
+                }}
+              />
+
+              <motion.div
+                className="relative h-full overflow-hidden rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ ease: "easeOut", duration: 0.5 }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500" />
+
+                <motion.div
+                  className="
+                    absolute inset-0
+                    bg-[repeating-linear-gradient(
+                      45deg,
+                      rgba(255,255,255,0.35) 0px,
+                      rgba(255,255,255,0.35) 10px,
+                      rgba(255,255,255,0.05) 10px,
+                      rgba(255,255,255,0.05) 20px
+                    )]
+                    bg-[length:40px_40px]
+                  "
+                  animate={{ backgroundPosition: ["0px 0px", "40px 40px"] }}
+                  transition={{
+                    duration: 1,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                />
+
+                <div className="absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white/50 to-transparent blur-md" />
+              </motion.div>
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   )

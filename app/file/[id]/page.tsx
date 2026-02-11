@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import Header from "@/app/components/header"
 import { getAudioFile } from "@/app/utils/audioStorage"
+import { supabase } from "@/lib/supabaseClient"
 
 type Word = {
   text: string
@@ -45,11 +46,17 @@ export default function FilePage() {
   const [volume, setVolume] = useState<number>(0.8)
   const [isPlaying, setIsPlaying] = useState<boolean>(false)
   const [audioUrl, setAudioUrl] = useState<string>("")
+  const [username, setUsername] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const activeWordRef = useRef<HTMLSpanElement | null>(null)
   const { id } = useParams()
   const router = useRouter()
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.replace("/auth/login")
+  }
 
   // Word-level timings: distribute duration by character length for better sync with speech
   const sentencesWithTiming = useMemo((): SentenceWithTiming[] => {
@@ -344,7 +351,10 @@ export default function FilePage() {
       />
 
       {/* Header */}
-      <Header />
+      <Header
+        userName={username}
+        onLogout={handleLogout}
+      />
 
       {/* Main layout */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-10 flex gap-8">
@@ -366,7 +376,7 @@ export default function FilePage() {
                   <button
                     key={file.id || `recent-${i}`}
                     onClick={() => file.id && router.push(`/file/${file.id}`)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 cursor-pointer"
                   >
                     {file.name}
                   </button>
@@ -458,25 +468,25 @@ export default function FilePage() {
             <div className="space-y-2 text-sm">
               <button
                 onClick={downloadPdf}
-                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left"
+                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left cursor-pointer"
               >
                 📄 Download PDF
               </button>
               <button
                 onClick={downloadDocx}
-                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left"
+                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left cursor-pointer"
               >
                 📝 Download DOCX
               </button>
               <button
                 onClick={downloadTxt}
-                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left"
+                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left cursor-pointer"
               >
                 📃 Download TXT
               </button>
               <button
                 onClick={downloadSrt}
-                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left"
+                className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-zinc-300 text-left cursor-pointer"
               >
                 🎬 Download SRT
               </button>
@@ -501,7 +511,7 @@ export default function FilePage() {
           {/* Play / Pause */}
           <button
             onClick={togglePlayPause}
-            className="text-white text-xl hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-white text-xl hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             disabled={!audioUrl}
           >
             {isPlaying ? "⏸" : "▶"}
