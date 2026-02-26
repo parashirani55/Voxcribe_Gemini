@@ -1,4 +1,5 @@
 // app/api/export/pdf/route.ts
+import { NOTO_SANS_HINDI } from "@/lib/fonts"
 import { NextResponse } from "next/server"
 
 export async function POST(req: Request) {
@@ -27,14 +28,22 @@ export async function POST(req: Request) {
       format: 'a4'
     })
 
-    // Set font with Unicode support
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(11)
+    // --- HINDI FONT REGISTRATION ---
+    // 1. Add the Base64 font to the internal Virtual File System
+    doc.addFileToVFS("NotoSansHindi.ttf", NOTO_SANS_HINDI);
+    
+    // 2. Register the font name "HindiFont"
+    doc.addFont("NotoSansHindi.ttf", "HindiFont", "normal");
+    
+    // 3. Set this as the global font for the document
+    doc.setFont("HindiFont");
+    // -------------------------------
 
     // Add title
     doc.setFontSize(18)
-    doc.setFont("helvetica", "bold")
-
+    // Note: We don't use "bold" here because Noto Sans Hindi is a separate file for bold. 
+    // The regular font will render the Hindi characters correctly.
+    
     // Handle title - split into multiple lines if too long
     const titleLines = doc.splitTextToSize(filename, 170)
     let yPosition = 20
@@ -46,14 +55,12 @@ export async function POST(req: Request) {
 
     // Add timestamp
     doc.setFontSize(10)
-    doc.setFont("helvetica", "normal")
     const timestamp = `Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     doc.text(timestamp, 105, yPosition + 5, { align: "center" })
     yPosition += 15
 
     // Add transcript content
     doc.setFontSize(11)
-    doc.setFont("helvetica", "normal")
 
     // Split text into lines that fit page width
     const contentWidth = 170 // mm
@@ -68,6 +75,9 @@ export async function POST(req: Request) {
       // Check if we need a new page
       if (currentY > pageHeight - bottomMargin) {
         doc.addPage()
+        // IMPORTANT: Reset font settings on every new page
+        doc.setFont("HindiFont");
+        doc.setFontSize(11);
         currentY = 20
       }
 
@@ -79,6 +89,7 @@ export async function POST(req: Request) {
     const pageCount = doc.getNumberOfPages()
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i)
+      doc.setFont("HindiFont"); // Ensure font is set for footer
       doc.setFontSize(9)
       doc.text(
         `Page ${i} of ${pageCount}`,
@@ -111,7 +122,7 @@ export async function POST(req: Request) {
         .replace(/[<>:"/\\|?*]/g, '')
         .trim() || "transcript"
 
-      // Create a text file with the transcript
+      // Create a text file with the transcript (Text files handle Hindi/UTF-8 natively)
       const textContent = `${filename}\n\nGenerated on ${new Date().toLocaleString()}\n\n${'='.repeat(50)}\n\n${text}`
       const textBuffer = Buffer.from(textContent, 'utf-8')
 
