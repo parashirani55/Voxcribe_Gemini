@@ -2,11 +2,14 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function Header({ userName, onLogout }) {
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  // FIXED: Removed TypeScript type annotation <string | null>
+  const [userEmail, setUserEmail] = useState(null)
   const menuRef = useRef(null)
   const buttonRef = useRef(null)
 
@@ -31,6 +34,17 @@ export default function Header({ userName, onLogout }) {
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Fetch user email on mount
+  useEffect(() => {
+    const getUserEmail = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        setUserEmail(user.email)
+      }
+    }
+    getUserEmail()
   }, [])
 
   const handleNavigation = (path) => {
@@ -147,7 +161,7 @@ export default function Header({ userName, onLogout }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium truncate">{userName || 'User'}</p>
-                    <p className="text-zinc-500 text-xs">user@example.com</p>
+                    <p className="text-zinc-500 text-xs truncate">{userEmail || 'Loading...'}</p>
                   </div>
                 </div>
               </div>
