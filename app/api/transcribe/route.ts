@@ -18,7 +18,20 @@ export async function POST(req: Request) {
 
         const buffer = Buffer.from(await file.arrayBuffer())
 
-        const prompt = `Transcribe this audio file. Output the transcript in ${language} only. If the speech is in a different language, translate it to ${language}. Provide only the raw transcript text—no timestamps, labels, or commentary.`
+        // UPDATED: Prompt now requests speaker identification and specific formatting
+        const prompt = `
+        Transcribe the following audio file. 
+        Output the transcript in ${language}. 
+        Identify different speakers and label them as 'Speaker 1', 'Speaker 2', etc. 
+        Format the transcript as a dialogue, with each speaker's turn on a new line starting with their label.
+        
+        Example format:
+        Speaker 1: Hello, how are you?
+        Speaker 2: I'm doing well, thanks.
+        
+        If there is only one speaker, just label as 'Speaker 1'.
+        Do not include timestamps. Output only the transcript text.
+        `
 
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
@@ -46,6 +59,8 @@ export async function POST(req: Request) {
         )
 
         const data = await response.json()
+
+        console.log(data)
 
         // Check if API returned an error
         if (!response.ok) {
@@ -142,7 +157,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({
             transcript: cleanedTranscript,
-            duration: 120,
+            duration: 120, // Note: Accurate duration requires an audio parsing library like 'music-metadata'
         })
     } catch (error) {
         console.error(error)

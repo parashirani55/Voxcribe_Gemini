@@ -58,6 +58,22 @@ export default function FilePage() {
     router.replace("/auth/login")
   }
 
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser()
+
+      if (data?.user) {
+        const username = data.user.user_metadata?.username
+
+        setUsername(username ? username : "User")
+      } else {
+        setUsername("User")
+      }
+    }
+
+    loadUser()
+  }, [])
+
   // Word-level timings: distribute duration by character length for better sync with speech
   const sentencesWithTiming = useMemo((): SentenceWithTiming[] => {
     if (sentences.length === 0 || totalTime <= 0) return []
@@ -106,52 +122,50 @@ export default function FilePage() {
 
   useEffect(() => {
     const loadFile = async () => {
-      const stored = JSON.parse(
-        localStorage.getItem("voxscribe_files") || "[]"
-      )
-
-      // Find current file
+      const stored = JSON.parse(localStorage.getItem("voxscribe_files") || "[]")
       const current = stored.find((f: any) => f.id === id)
 
       if (current) {
         setAudioName(current.name)
 
-        // Load audio file from IndexedDB
-        try {
-          const audioFile = await getAudioFile(current.id)
-          if (audioFile) {
-            const blobUrl = URL.createObjectURL(audioFile)
-            setAudioUrl(blobUrl)
-          }
-        } catch (error) {
-          console.error("Failed to load audio file:", error)
+        // Fetch binary from IndexedDB
+        const audioFile = await getAudioFile(current.id)
+        if (audioFile) {
+          setAudioUrl(URL.createObjectURL(audioFile))
         }
 
-        // Convert plain transcript string → UI sentence format
-        if (current.transcript && current.transcript.trim() !== "") {
-          // Split by words and filter out empty strings
-          const words = current.transcript.trim().split(/\s+/).filter((word: string) => word.length > 0)
+        if (current.transcript) {
+          const temp: Sentence[] = []
 
-          if (words.length > 0) {
-            setSentences([
-              {
-                speaker: "Speaker 1",
-                words: words.map((word: string) => ({
-                  text: word,
-                  time: "",
-                })),
-              },
-            ])
-          }
+          const matches = [...current.transcript.matchAll(/(Speaker\s*\d+):\s*([\s\S]*?)(?=(Speaker\s*\d+:|$))/gi)]
+
+          matches.forEach((match) => {
+            const speaker = match[1].trim()
+            const text = match[2].trim()
+
+            const words = text
+              .split(/\s+/)
+              .filter(Boolean)
+              .map((w: string) => ({ text: w, time: "" }))
+
+            // merge with previous speaker if same
+            const last = temp[temp.length - 1]
+
+            if (last && last.speaker === speaker) {
+              last.words.push(...words)
+            } else {
+              temp.push({
+                speaker,
+                words,
+              })
+            }
+          })
+
+          setSentences(temp)
         }
       }
-
-      // Populate recent files (left sidebar)
-      setRecentFiles(
-        stored.slice(0, 5).map((f: any) => ({ id: f.id, name: f.name }))
-      )
+      setRecentFiles(stored.slice(0, 5).map((f: any) => ({ id: f.id, name: f.name })))
     }
-
     loadFile()
   }, [id])
 
@@ -229,7 +243,7 @@ export default function FilePage() {
 
   const getTranscriptText = () =>
     sentences
-      .map((s) => s.words.map((w) => w.text).join(" "))
+      .map((s) => `${s.speaker}: ${s.words.map((w) => w.text).join(" ")}`)
       .join("\n\n")
       .trim()
 
@@ -251,7 +265,7 @@ export default function FilePage() {
           const start = words[0].start
           const end = words[words.length - 1].end
           const text = words.map((w) => w.text).join(" ")
-          return `${i + 1}\n${secondsToSrtTime(start)} --> ${secondsToSrtTime(end)}\n${text}\n`
+          return `${i + 1}\n${secondsToSrtTime(start)} --> ${secondsToSrtTime(end)}\n${sent.speaker}: ${text}\n`
         })
         .filter(Boolean)
         .join("\n")
@@ -263,7 +277,7 @@ export default function FilePage() {
         if (!text) return ""
         const start = i
         const end = i + 1
-        return `${i + 1}\n${secondsToSrtTime(start)} --> ${secondsToSrtTime(end)}\n${text}\n`
+        return `${i + 1}\n${secondsToSrtTime(start)} --> ${secondsToSrtTime(end)}\n${sent.speaker}: ${text}\n`
       })
       .filter(Boolean)
       .join("\n")
@@ -416,11 +430,8 @@ export default function FilePage() {
                 return (
                   <div className="space-y-4">
                     {list.map((sentence, si) => (
-                      <div
-                        key={si}
-                        className="rounded-lg p-3 hover:bg-white/5 transition"
-                      >
-                        <div className="text-xs text-red-400 font-semibold mb-1">
+                      <div key={si} className="rounded-lg p-3 hover:bg-white/5 transition border-b border-white/5 pb-6">
+                        <div className="text-[10px] text-red-500 font-bold uppercase tracking-widest mb-2">
                           {sentence.speaker}
                         </div>
                         <div className="text-white leading-relaxed break-words overflow-wrap-anywhere">
