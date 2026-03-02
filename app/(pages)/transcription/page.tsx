@@ -5,7 +5,9 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "r
 import { storeAudioFile } from "@/app/utils/audioStorage"
 import { FiChevronDown, FiClock } from "react-icons/fi"
 import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
 
+// ... (LANGUAGES array remains the same) ...
 const LANGUAGES = [
   { code: "en", label: "English", flag: "🇺🇸" },
   { code: "hi", label: "Hindi", flag: "🇮🇳" },
@@ -44,6 +46,7 @@ export default function TranscriptionPage() {
 
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
+  const [statusMessage, setStatusMessage] = useState("Processing audio")
 
   const [progress, setProgress] = useState(0)
   const progressRef = useRef<any>(null)
@@ -122,17 +125,49 @@ export default function TranscriptionPage() {
       return
     }
 
+    if (isTranscribing) return // Prevent double submission
+
+    // Check auth first
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      alert("Please login to transcribe files")
+      router.push("/auth/login")
+      return
+    }
+
     setShowProgress(true)
     setIsTranscribing(true)
-
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("language", language.code)
+    setStatusMessage("Uploading file...")
 
     try {
+      // 1. Upload file to Supabase Storage
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        throw new Error(`Upload failed: ${uploadError.message}`)
+      }
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('audio-files')
+        .getPublicUrl(fileName)
+
+      setStatusMessage("Transcribing audio...")
+
+      // 3. Send URL to API
       const res = await fetch("/api/transcribe", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileUrl: publicUrl,
+          mimeType: file.type,
+          language: language.code
+        }),
       })
 
       let data: any
@@ -154,24 +189,31 @@ export default function TranscriptionPage() {
 
       // Complete the progress bar
       setProgress(100)
+      setStatusMessage("Saving...")
 
-      const stored = JSON.parse(localStorage.getItem("voxscribe_files") || "[]")
+      // Store audio file locally (IndexedDB) for playback
       const fileId = crypto.randomUUID()
-
       await storeAudioFile(fileId, file)
 
-      stored.unshift({
-        id: fileId,
-        name: file.name,
-        size: file.size,
-        duration: data.duration || 0,
-        language: language.label,
-        createdAt: new Date().toISOString(),
-        status: "completed",
-        transcript: transcriptText,
-      })
+      // Store metadata in Supabase
+      // REMOVED localStorage logic to prevent duplicates
+      const { error: dbError } = await supabase
+        .from('files')
+        .insert({
+          id: fileId,
+          user_id: user.id,
+          name: file.name,
+          size: file.size,
+          duration: data.duration || 0,
+          language: language.label,
+          transcript: transcriptText,
+          status: "completed",
+        })
 
-      localStorage.setItem("voxscribe_files", JSON.stringify(stored))
+      if (dbError) {
+        console.error("Database save error:", dbError)
+        throw new Error("Failed to save transcription to database")
+      }
 
       // Redirect after showing 100%
       setTimeout(() => {
@@ -394,7 +436,7 @@ export default function TranscriptionPage() {
             <div className="flex justify-between items-center text-xs text-zinc-400 mb-2">
               <div className="flex items-center gap-2">
                 <FiClock className="w-3.5 h-3.5" />
-                <span>Processing audio</span>
+                <span>{statusMessage}</span>
               </div>
               <span className="font-mono">{Math.floor(progress)}%</span>
             </div>
